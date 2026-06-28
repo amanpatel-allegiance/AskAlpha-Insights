@@ -6,7 +6,10 @@ import type {
   DateRange, RoleFilter, FeatureFilter,
 } from "@/types";
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// Empty string = relative URLs. Next.js rewrites in next.config.js proxy
+// /api/* → backend server-to-server, so the browser never touches the backend
+// directly. This prevents mixed-content blocks (HTTPS page → HTTP backend).
+const BASE = "";
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { cache: "no-store" });
