@@ -9,9 +9,10 @@ async def get_pool() -> asyncpg.Pool:
     if _pool is None:
         _pool = await asyncpg.create_pool(
             settings.resolved_database_url,
-            min_size=2,
-            max_size=10,
+            min_size=1,
+            max_size=5,
             command_timeout=30,
+            statement_cache_size=0,  # required for Supabase transaction-mode pooler
         )
     return _pool
 
