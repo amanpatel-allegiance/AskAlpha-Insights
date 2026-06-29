@@ -220,6 +220,69 @@ JOIN profiles p ON p.id = v.requested_by
 ORDER BY v.created_at DESC
 LIMIT 1
 
+Q: Who generated the least videos this week? / Who generated the fewest videos?
+SQL:
+WITH video_counts AS (
+    SELECT
+        p.id,
+        COALESCE(p.first_name || ' ' || p.last_name, p.email) AS agent_name,
+        p.role,
+        COUNT(v.id)                                            AS videos_count,
+        COUNT(v.id) FILTER (WHERE v.mode = 'avatar')           AS avatar_count,
+        COUNT(v.id) FILTER (WHERE v.mode = 'cinematic')        AS cinematic_count
+    FROM videos v
+    JOIN profiles p ON p.id = v.requested_by
+    WHERE v.created_at >= NOW() - INTERVAL '7 days'
+    GROUP BY p.id, agent_name, p.role
+)
+SELECT agent_name, role, videos_count, avatar_count, cinematic_count
+FROM video_counts
+WHERE videos_count = (SELECT MIN(videos_count) FROM video_counts)
+ORDER BY agent_name
+LIMIT 50
+
+Q: Who generated the most videos this week? / Who is the top video creator?
+SQL:
+WITH video_counts AS (
+    SELECT
+        p.id,
+        COALESCE(p.first_name || ' ' || p.last_name, p.email) AS agent_name,
+        p.role,
+        COUNT(v.id)                                            AS videos_count,
+        COUNT(v.id) FILTER (WHERE v.mode = 'avatar')           AS avatar_count,
+        COUNT(v.id) FILTER (WHERE v.mode = 'cinematic')        AS cinematic_count
+    FROM videos v
+    JOIN profiles p ON p.id = v.requested_by
+    WHERE v.created_at >= NOW() - INTERVAL '7 days'
+    GROUP BY p.id, agent_name, p.role
+)
+SELECT agent_name, role, videos_count, avatar_count, cinematic_count
+FROM video_counts
+WHERE videos_count = (SELECT MAX(videos_count) FROM video_counts)
+ORDER BY agent_name
+LIMIT 50
+
+Q: Who sent the least/fewest chat messages this week?
+SQL:
+WITH msg_counts AS (
+    SELECT
+        p.id,
+        COALESCE(p.first_name || ' ' || p.last_name, p.email) AS agent_name,
+        p.role,
+        COUNT(m.id) AS message_count
+    FROM ask_alpha_messages m
+    JOIN ask_alpha_conversations c ON c.id = m.conversation_id
+    JOIN profiles p ON p.id = c.user_id
+    WHERE m.role = 'user'
+      AND c.created_at >= NOW() - INTERVAL '7 days'
+    GROUP BY p.id, agent_name, p.role
+)
+SELECT agent_name, role, message_count
+FROM msg_counts
+WHERE message_count = (SELECT MIN(message_count) FROM msg_counts)
+ORDER BY agent_name
+LIMIT 50
+
 Q: Show me all studio jobs done today and who did them
 SQL:
 SELECT
@@ -264,6 +327,9 @@ Your only job is to convert natural language questions into safe PostgreSQL SELE
   default to querying TODAY's data for that entity type (videos today, agents today, etc.).
 - Only reply CANNOT_ANSWER: <reason> if the question is truly outside the schema (e.g. asking about
   pricing, property listings, external systems). For any usage-related question, always attempt a query.
+- TIES — most/least/highest/lowest: NEVER use LIMIT 1 for these. Use a subquery to find the
+  min/max value, then return ALL rows matching that value. Multiple people may be tied.
+  Pattern: WHERE count_col = (SELECT MIN(count_col) FROM cte) — always show all tied results.
 """
 
 FORMAT_SYSTEM_PROMPT = """You are a concise analytics assistant for Allegiance Real Estate senior leadership.
@@ -276,7 +342,10 @@ Write a clear, brief natural-language response. Rules:
 - Percentages to 1 decimal place (e.g. 84.3%)
 - If results are empty, clearly state no data was found for that period
 - No SQL jargon, no technical details
-- Keep it under 150 words
+- Keep it under 200 words
+- TIES: If multiple rows share the same min or max value, list ALL of them — never pick just one.
+  Example: "3 agents are tied for the least with 1 video each: Name A, Name B, Name C."
+  Never say "the agent who generated the least" if multiple agents share that count.
 """
 
 # ---------------------------------------------------------------------------
